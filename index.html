@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NMR Triple Resonance Strip Plot Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>NMR Triple Resonance Strip Plot Game</h1>
+            <p class="subtitle">Learn protein backbone assignment through interactive strip plot puzzles</p>
+        </header>
+
+        <div class="game-controls">
+            <button id="newGame" class="btn btn-primary">New Game</button>
+            <button id="checkAnswer" class="btn btn-success">Check Answer</button>
+            <button id="showHint" class="btn btn-info">Show Hint</button>
+            <button id="toggleInstructions" class="btn btn-secondary">Instructions</button>
+            <select id="difficulty" class="difficulty-select">
+                <option value="easy">Easy (4 residues)</option>
+                <option value="medium" selected>Medium (6 residues)</option>
+                <option value="hard">Hard (8 residues)</option>
+            </select>
+        </div>
+
+        <div id="instructions" class="instructions hidden">
+            <h2>How to Play</h2>
+            <p><strong>Goal:</strong> Connect amino acid residues in the correct sequential order using NMR strip plots.</p>
+            <h3>Understanding Strip Plots:</h3>
+            <ul>
+                <li><strong>HNCA:</strong> Shows peaks for both i (intraresidue) and i-1 (sequential) CA carbons</li>
+                <li><strong>HNCO:</strong> Shows the i-1 (sequential) CO carbon</li>
+                <li>Each strip shows the chemical shifts for a specific residue's backbone atoms</li>
+            </ul>
+            <h3>Instructions:</h3>
+            <ol>
+                <li>Click on a residue strip to select it</li>
+                <li>Click on another residue to connect them</li>
+                <li>Match the CA and CO chemical shifts between sequential residues</li>
+                <li>Continue until all residues are connected in order</li>
+                <li>Click "Check Answer" to verify your solution</li>
+            </ol>
+            <p><strong>Tip:</strong> Look for matching CA(i-1) values in HNCA with CA(i) values in the previous residue!</p>
+        </div>
+
+        <div class="game-info">
+            <div class="info-item">
+                <span class="label">Score:</span>
+                <span id="score">0</span>
+            </div>
+            <div class="info-item">
+                <span class="label">Connections:</span>
+                <span id="connections">0</span>
+            </div>
+            <div class="info-item">
+                <span class="label">Status:</span>
+                <span id="status">Click strips to connect residues</span>
+            </div>
+        </div>
+
+        <div id="gameBoard" class="game-board">
+            <!-- Strip plots will be dynamically generated here -->
+        </div>
+
+        <div id="feedback" class="feedback hidden"></div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
