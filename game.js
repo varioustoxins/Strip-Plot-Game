@@ -103,45 +103,110 @@ class NMRGame {
             strip.dataset.residueId = residue.id;
             strip.dataset.index = index;
 
+            // Generate SVG contour plot
+            const contourSVG = this.generateContourPlot(residue);
+
             strip.innerHTML = `
                 <div class="strip-header">
                     <div class="residue-name">${residue.name}${residue.number}</div>
                 </div>
-                <div class="strip-data">
-                    <div class="data-row">
-                        <span class="data-label">H:</span>
-                        <span class="data-value">${residue.H}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label">N:</span>
-                        <span class="data-value">${residue.N}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label">CA(i):</span>
-                        <span class="data-value">${residue.CA_i}</span>
-                    </div>
-                    <div class="data-row">
-                        <span class="data-label">CO(i):</span>
-                        <span class="data-value">${residue.CO_i}</span>
-                    </div>
-                    ${residue.CA_i_minus_1 ? `
-                    <div class="data-row">
-                        <span class="data-label">CA(i-1):</span>
-                        <span class="data-value">${residue.CA_i_minus_1}</span>
-                    </div>
-                    ` : ''}
-                    ${residue.CO_i_minus_1 ? `
-                    <div class="data-row">
-                        <span class="data-label">CO(i-1):</span>
-                        <span class="data-value">${residue.CO_i_minus_1}</span>
-                    </div>
-                    ` : ''}
+                <div class="strip-plot">
+                    ${contourSVG}
                 </div>
             `;
 
             strip.addEventListener('click', () => this.handleStripClick(residue.id, index));
             board.appendChild(strip);
         });
+    }
+
+    generateContourPlot(residue) {
+        const width = 150;
+        const height = 300;
+        const margin = { top: 10, right: 10, bottom: 25, left: 35 };
+        const plotWidth = width - margin.left - margin.right;
+        const plotHeight = height - margin.top - margin.bottom;
+
+        // CA range: 50-65, CO range: 172-178
+        const caMin = 48, caMax = 67;
+        const coMin = 171, coMax = 179;
+
+        // Scale function for CA (x-axis)
+        const scaleCA = (val) => margin.left + ((val - caMin) / (caMax - caMin)) * plotWidth;
+        
+        // Scale function for CO (y-axis) - inverted because SVG y increases downward
+        const scaleCO = (val) => margin.top + ((coMax - val) / (coMax - coMin)) * plotHeight;
+
+        let svg = `<svg width="${width}" height="${height}" class="strip-svg">`;
+        
+        // Background
+        svg += `<rect x="${margin.left}" y="${margin.top}" width="${plotWidth}" height="${plotHeight}" fill="#f8f9fa" stroke="#dee2e6"/>`;
+
+        // Axis labels
+        svg += `<text x="${width/2}" y="${height - 5}" text-anchor="middle" font-size="10" fill="#495057">C (ppm)</text>`;
+        svg += `<text x="8" y="${height/2}" text-anchor="middle" font-size="10" fill="#495057" transform="rotate(-90, 8, ${height/2})">C=O (ppm)</text>`;
+
+        // Tick marks and labels on axes
+        // CA axis (bottom)
+        for (let ca = 50; ca <= 65; ca += 5) {
+            const x = scaleCA(ca);
+            svg += `<line x1="${x}" y1="${margin.top + plotHeight}" x2="${x}" y2="${margin.top + plotHeight + 3}" stroke="#6c757d" stroke-width="0.5"/>`;
+            svg += `<text x="${x}" y="${margin.top + plotHeight + 13}" text-anchor="middle" font-size="8" fill="#6c757d">${ca}</text>`;
+        }
+
+        // CO axis (left)
+        for (let co = 172; co <= 178; co += 2) {
+            const y = scaleCO(co);
+            svg += `<line x1="${margin.left - 3}" y1="${y}" x2="${margin.left}" y2="${y}" stroke="#6c757d" stroke-width="0.5"/>`;
+            svg += `<text x="${margin.left - 5}" y="${y + 3}" text-anchor="end" font-size="8" fill="#6c757d">${co}</text>`;
+        }
+
+        // Draw contour peaks
+        const peaks = [];
+        
+        // CA(i) and CO(i) peak - always present
+        peaks.push({
+            ca: parseFloat(residue.CA_i),
+            co: parseFloat(residue.CO_i),
+            color: '#dc3545',
+            label: 'i'
+        });
+
+        // CA(i-1) and CO(i-1) peak - if present
+        if (residue.CA_i_minus_1 && residue.CO_i_minus_1) {
+            peaks.push({
+                ca: parseFloat(residue.CA_i_minus_1),
+                co: parseFloat(residue.CO_i_minus_1),
+                color: '#007bff',
+                label: 'i-1'
+            });
+        }
+
+        // Draw each peak as a series of concentric ellipses (contour lines)
+        peaks.forEach(peak => {
+            const cx = scaleCA(peak.ca);
+            const cy = scaleCO(peak.co);
+            
+            // Draw 3 contour levels
+            for (let level = 3; level >= 1; level--) {
+                const rx = 3 + level * 2;
+                const ry = 4 + level * 2.5;
+                const opacity = 0.15 + (4 - level) * 0.15;
+                
+                svg += `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" 
+                        fill="${peak.color}" opacity="${opacity}" stroke="${peak.color}" 
+                        stroke-width="0.5" stroke-opacity="${opacity + 0.2}"/>`;
+            }
+
+            // Center point
+            svg += `<circle cx="${cx}" cy="${cy}" r="1.5" fill="${peak.color}"/>`;
+            
+            // Label
+            svg += `<text x="${cx + 8}" y="${cy - 8}" font-size="9" font-weight="bold" fill="${peak.color}">${peak.label}</text>`;
+        });
+
+        svg += `</svg>`;
+        return svg;
     }
 
     handleStripClick(residueId, index) {

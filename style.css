@@ -232,24 +232,14 @@ h1 {
     color: #333;
 }
 
-.strip-data {
-    font-size: 0.9em;
-}
-
-.data-row {
+.strip-plot {
     display: flex;
-    justify-content: space-between;
-    padding: 5px 0;
-    border-bottom: 1px solid #e2e8f0;
+    justify-content: center;
+    align-items: center;
 }
 
-.data-label {
-    font-weight: bold;
-    color: #667eea;
-}
-
-.data-value {
-    color: #333;
+.strip-svg {
+    display: block;
 }
 
 .connection-line {
