@@ -109,6 +109,7 @@ class NMRGame {
             strip.innerHTML = `
                 <div class="strip-header">
                     <div class="residue-name">${residue.name}${residue.number}</div>
+                    <div class="hn-coordinates">H: ${residue.H} ppm, N: ${residue.N} ppm</div>
                 </div>
                 <div class="strip-plot">
                     ${contourSVG}

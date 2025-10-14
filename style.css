@@ -232,6 +232,13 @@ h1 {
     color: #333;
 }
 
+.hn-coordinates {
+    font-size: 0.75em;
+    color: #667eea;
+    margin-top: 3px;
+    font-weight: 500;
+}
+
 .strip-plot {
     display: flex;
     justify-content: center;
