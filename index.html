@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HNCA/HNcoCA Strip Game</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<style>
+  :root {
+    --plot-w: 84px;
+    --plot-h: 499px;          /* 84 * 2400 / 404 : keeps the PNG aspect ratio */
+    --head-h: 22px;
+    --row-h: 26px;
+    --axis-w: 56px;
+    --ink: #1d1d1f;
+    --muted: #6b6b70;
+    --line: #1d1d1f;
+    --cell: #cfd0d4;
+    --ok: #1f8a3b;
+    --bad: #c62828;
+    --bg: #f4f4f2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 48px;
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: var(--ink); background: var(--bg);
+  }
+  main { max-width: 1160px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .rule { margin: 0 0 18px; color: var(--muted); }
+  .rule b { color: var(--ink); }
+  .rule .red { color: #a3171f; }
+
+  .board-scroll { overflow-x: auto; padding: 11.5px 0 6px; }   /* matches pool padding + border so tops line up */
+  .board { position: relative; display: flex; width: max-content; }
+  .axis { width: var(--axis-w); flex: none; position: relative; margin-top: 1.5px; }  /* matches .slots top border */
+  .axis svg { position: absolute; top: var(--head-h); right: 0; overflow: visible; }
+  .axis .rowlabel {
+    position: absolute; right: 8px; height: var(--row-h); line-height: var(--row-h);
+    font-size: 14px;
+  }
+  .slots { display: flex; border: 1.5px solid var(--line); border-right: 0; }
+  .slot {
+    width: calc(var(--plot-w) + 1.5px); flex: none; position: relative;
+    border-right: 1.5px solid var(--line);
+    min-height: calc(var(--head-h) + var(--plot-h) + 3 * var(--row-h));
+  }
+  .slot:empty::before {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(135deg, transparent 0 8px, rgba(0,0,0,.035) 8px 16px);
+  }
+  .slot.next:empty::before { background: #fff; outline: 2px dashed #4a7bd0; outline-offset: -2px; }
+  .slot.target { outline: 3px solid #e8a24a; outline-offset: -3px; }
+  .slot.target:empty::before { background: #fff3e3; outline: 0; }   /* hovering a valid drop site */
+  #links { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+
+  .layout { display: grid; grid-template-columns: max-content max-content; gap: 28px; align-items: start; }
+  .play { min-width: 0; }
+  .play .bar { width: 0; min-width: 100%; }   /* bar never widens the board column */
+  .bar #status { flex: 1 1 0; }
+  @media (max-width: 960px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .pool-label { margin: 0 0 8px; font-weight: 600; }
+  .pool {
+    display: flex; flex-wrap: wrap; gap: 14px; align-content: flex-start;
+    min-height: calc(var(--head-h) + var(--plot-h) + 3 * var(--row-h) + 20px);
+    /* exactly five cards wide (the most it ever holds): 5 cards + 4 gaps + padding + border */
+    width: calc(5 * (var(--plot-w) + 3px) + 4 * 14px + 20px + 3px); max-width: 100%;
+    padding: 10px; border: 1.5px dashed #b9b9bd; border-radius: 10px; background: #fff;
+  }
+  .pool.target { border-color: #e8a24a; background: #fff3e3; }
+  .pool .card { border: 1.5px solid var(--line); width: calc(var(--plot-w) + 3px); }
+
+  .card {
+    width: var(--plot-w); background: #fff; touch-action: none; user-select: none;
+    cursor: grab;
+  }
+  .card.locked { cursor: default; }
+  .card { position: relative; isolation: isolate; }
+  .card::after {
+    content: ""; position: absolute; left: 50%; top: var(--head-h); height: var(--plot-h);
+    border-left: 1px dotted #a9a9ae; pointer-events: none; z-index: 0;
+  }
+  .card img { position: relative; z-index: 1; mix-blend-mode: multiply; }   /* white plot background lets the centre line show through */
+  .card.lifted { opacity: .25; }
+  .card .head { height: var(--head-h); border-bottom: 1.5px solid var(--line); }
+  .card img { display: block; width: var(--plot-w); height: var(--plot-h); pointer-events: none; }
+  .card .row {
+    height: var(--row-h); line-height: var(--row-h); text-align: center;
+    border-top: 1.5px solid var(--line); font-size: 14px; font-variant-numeric: tabular-nums;
+  }
+  .card .res { background: var(--cell); font-weight: 600; }
+  .card .n { background: var(--cell); }
+  .ghost {
+    position: fixed; z-index: 10; pointer-events: none; border: 1.5px solid var(--line);
+    box-shadow: 0 12px 30px rgba(0,0,0,.25); transform: rotate(1.5deg);
+  }
+
+  .bar { display: flex; gap: 10px; align-items: center; margin-top: 18px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 8px;
+    border: 1.5px solid var(--ink); background: #fff; color: var(--ink); cursor: pointer;
+  }
+  button:disabled { opacity: .4; cursor: default; }
+  #status { color: var(--muted); }
+  .key { white-space: nowrap; margin-left: 4px; font-size: 1.1em; }
+  .key .blk { color: #1d1d1f; }
+  #status.ok { color: var(--ok); font-weight: 600; }
+  #status.bad { color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <h1>HNCA/HNcoCA strip game</h1>
+  <p class="rule">Connect the <b>black</b> <i>i</i> peak on the right to the <b class="red">red</b> <i>i</i>&#8209;1 peak on the left.
+    <span class="key"><span class="red">●</span>&thinsp;←&thinsp;<span class="blk">●</span></span></p>
+
+  <div class="layout">
+    <div class="play">
+      <div class="pool-label">Assembled strips</div>
+      <div class="board-scroll">
+        <div class="board" id="board">
+          <div class="axis" id="axis"></div>
+          <div class="slots" id="slots"></div>
+          <svg id="links"></svg>
+        </div>
+      </div>
+      <div class="bar">
+        <button id="hint">Hint</button>
+        <button id="reset">Start again</button>
+        <span id="status">Loading Python…</span>
+      </div>
+    </div>
+    <div class="side">
+      <div class="pool-label">Strips to place</div>
+      <div class="pool" id="pool"></div>
+    </div>
+  </div>
+</main>
+
+<script type="text/x-python" id="game-py">
+import json
+
+# 13C shifts of the assigned peaks, measured from the dotted circles in strip-game-1/2.pdf
+# ca_i   : red HNCA peak (this residue's CA)
+# ca_im1 : black HNcoCA peak (previous residue's CA)
+STRIPS = {
+    "red":     dict(hn=8.939, n=121.01, ca_i=58.84, ca_im1=60.68, residue="ASP", number=130),
+    "blue":    dict(hn=8.346, n=116.43, ca_i=57.13, ca_im1=58.86, residue="ASP", number=131),
+    "green":   dict(hn=7.526, n=120.96, ca_i=55.39, ca_im1=57.37, residue="ASN", number=132),
+    "orange":  dict(hn=8.963, n=122.49, ca_i=67.06, ca_im1=55.44, residue="ILE", number=133),
+    "crimson": dict(hn=7.793, n=117.06, ca_i=56.63, ca_im1=66.97, residue="ASN", number=134),
+    "cyan":    dict(hn=7.821, n=118.66, ca_i=65.63, ca_im1=56.62, residue="ILE", number=135),
+}
+SOLUTION = ["red", "blue", "green", "orange", "crimson", "cyan"]
+TOLERANCE = 0.3  # ppm
+
+
+def strip_info():
+    return json.dumps({k: dict(hn=v["hn"], n=v["n"], ca_i=v["ca_i"], ca_im1=v["ca_im1"])
+                       for k, v in STRIPS.items()})
+
+
+def link(left, right):
+    a, b = STRIPS[left]["ca_i"], STRIPS[right]["ca_im1"]
+    return dict(left=left, right=right, ca_i=a, ca_im1=b, match=abs(a - b) <= TOLERANCE)
+
+
+def check(order_json):
+    order = json.loads(order_json)
+    links = [link(l, r) if l and r else None for l, r in zip(order, order[1:])]
+    filled = all(order)
+    solved = filled and all(k["match"] for k in links)
+    bad = sum(1 for k in links if k and not k["match"])
+    return json.dumps(dict(links=links, filled=filled, solved=solved, bad=bad))
+
+
+def hint():
+    return SOLUTION[1]
+</script>
+
+<script>
+const PPM_TOP = 49.8, PPM_BOTTOM = 71.0;       // range covered by assets/*.png
+const COLOURS = { red: "#ed1c24", blue: "#2e3092", green: "#00a650",
+                  orange: "#f7941d", crimson: "#be1e2d", cyan: "#00aeef" };
+const START = "red";
+const ASSET_VERSION = 2;   // bump when assets/*.png are rebuilt so browsers refetch them
+const N_SLOTS = 6;
+
+const $ = id => document.getElementById(id);
+let py = null, STRIPS = null, hintUsed = false, solved = false;
+
+const cssPx = name => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+const plotH = () => cssPx("--plot-h");
+const ppmToY = ppm => (ppm - PPM_TOP) / (PPM_BOTTOM - PPM_TOP) * plotH();
+
+function drawAxis() {
+  const h = plotH(), head = cssPx("--head-h"), row = cssPx("--row-h");
+  let s = `<svg width="30" height="${h}" viewBox="0 0 30 ${h}">`;
+  for (let p = 50; p <= 70; p++) {
+    const y = ppmToY(p), major = p % 5 === 0;
+    s += `<line x1="${major ? 16 : 22}" x2="30" y1="${y}" y2="${y}" stroke="#1d1d1f" stroke-width="1.2"/>`;
+    if (major) s += `<text x="12" y="${y + 4.5}" text-anchor="end" font-size="13" fill="#1d1d1f">${p}</text>`;
+  }
+  s += `</svg>`;
+  const top = head + h;
+  $("axis").innerHTML = s +
+    `<div style="position:absolute;left:-2px;top:${head + h / 2}px;transform:rotate(-90deg) translateX(-50%);transform-origin:left top;font-size:13px;white-space:nowrap">
+       <sup>13</sup>C<sub>α</sub> (ppm)</div>` +
+    `<div class="rowlabel" style="top:${top + row}px"><sup>1</sup>H</div>` +
+    `<div class="rowlabel" style="top:${top + 2 * row}px"><sup>15</sup>N</div>`;
+}
+
+function makeCard(id) {
+  const s = STRIPS[id];
+  const el = document.createElement("div");
+  el.className = "card";
+  el.dataset.id = id;
+  el.innerHTML = `
+    <div class="head" style="background:${COLOURS[id]}"></div>
+    <img src="assets/${id}.png?v=${ASSET_VERSION}" alt="HNCA strip" draggable="false">
+    <div class="row res">???</div>
+    <div class="row">${s.hn.toFixed(3)}</div>
+    <div class="row n">${s.n.toFixed(2)}</div>`;
+  el.addEventListener("pointerdown", startDrag);
+  return el;
+}
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function newGame() {
+  hintUsed = false; solved = false;
+  $("hint").disabled = false;
+  $("slots").innerHTML = "";
+  $("pool").innerHTML = "";
+  for (let i = 0; i < N_SLOTS; i++) {
+    const slot = document.createElement("div");
+    slot.className = "slot";
+    slot.dataset.index = i;
+    $("slots").append(slot);
+  }
+  placeLocked(START, 0);
+  shuffle(Object.keys(STRIPS).filter(k => k !== START)).forEach(k => $("pool").append(makeCard(k)));
+  refresh();
+}
+
+function placeLocked(id, index) {
+  const slot = $("slots").children[index];
+  const existing = slot.querySelector(".card");
+  if (existing) $("pool").append(existing);
+  const card = document.querySelector(`.card[data-id="${id}"]`) || makeCard(id);
+  card.classList.add("locked");
+  slot.dataset.locked = "1";
+  slot.append(card);
+}
+
+function order() {
+  return [...$("slots").children].map(s => s.querySelector(".card")?.dataset.id ?? null);
+}
+
+/* ---------- dragging (pointer events: mouse + touch) ---------- */
+let drag = null;
+
+function startDrag(e) {
+  const card = e.currentTarget;
+  if (card.classList.contains("locked") || solved || !py) return;
+  if (card.parentElement.classList.contains("slot") && card.parentElement !== lastFilledSlot()) return;
+  e.preventDefault();
+  const r = card.getBoundingClientRect();
+  const ghost = card.cloneNode(true);
+  ghost.classList.add("ghost");
+  ghost.style.left = r.left + "px";
+  ghost.style.top = r.top + "px";
+  document.body.append(ghost);
+  card.classList.add("lifted");
+  drag = { card, ghost, dx: e.clientX - r.left, dy: e.clientY - r.top, target: null };
+  window.addEventListener("pointermove", moveDrag);
+  window.addEventListener("pointerup", endDrag);
+  window.addEventListener("pointercancel", endDrag);
+}
+
+function nextSlot() {
+  return [...$("slots").children].find(s => !s.querySelector(".card")) ?? null;
+}
+
+function lastFilledSlot() {
+  return [...$("slots").children].filter(s => s.querySelector(".card")).pop() ?? null;
+}
+
+let blocked = false;   // a bad connection is on the board: no more strips until it is removed
+function dropTargetAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  const slot = el?.closest(".slot");
+  if (slot) return blocked || slot.querySelector(".card") ? null : nextSlot();   // any empty slot drops into the next free one
+  return el?.closest(".pool") ?? null;
+}
+
+function moveDrag(e) {
+  drag.ghost.style.left = e.clientX - drag.dx + "px";
+  drag.ghost.style.top = e.clientY - drag.dy + "px";
+  const t = dropTargetAt(e.clientX, e.clientY);
+  if (t !== drag.target) {
+    drag.target?.classList.remove("target");
+    t?.classList.add("target");
+    drag.target = t;
+  }
+}
+
+function endDrag() {
+  window.removeEventListener("pointermove", moveDrag);
+  window.removeEventListener("pointerup", endDrag);
+  window.removeEventListener("pointercancel", endDrag);
+  const { card, ghost, target } = drag;
+  ghost.remove();
+  card.classList.remove("lifted");
+  target?.classList.remove("target");
+  drag = null;
+  if (!target || target === card.parentElement) return;
+
+  target.append(card);
+  refresh();
+}
+
+/* ---------- connectors ---------- */
+function peakXY(id, ppm, boardRect) {
+  const img = document.querySelector(`.slot .card[data-id="${id}"] img`).getBoundingClientRect();
+  return { x: img.left - boardRect.left + img.width * 0.49, y: img.top - boardRect.top + ppmToY(ppm), w: img.width };
+}
+
+function drawLinks(links, complete) {
+  const board = $("board"), svg = $("links");
+  const br = board.getBoundingClientRect();
+  svg.setAttribute("width", br.width);
+  svg.setAttribute("height", br.height);
+  const ry = 0.9 * plotH() / (PPM_BOTTOM - PPM_TOP);
+  // green links point backwards: from the black CA(i-1) peak on the right to the red CA(i) peak on the left
+  let s = `<defs><marker id="back" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="3.2" markerHeight="3.2"
+             orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${getVar("--ok")}"/></marker></defs>`;
+  const circle = (p) =>
+    `<ellipse cx="${p.x}" cy="${p.y}" rx="${p.w * 0.27}" ry="${ry}" fill="rgba(120,120,125,.18)"
+              stroke="#1d1d1f" stroke-width="1.6" stroke-dasharray="1.6 2.4"/>`;
+  const ok = getVar("--ok");
+  const ends = {};   // per strip: its green-linked black (CA(i-1)) and red (CA(i)) circle centres
+  const end = (id, key, p) => ((ends[id] ??= {})[key] = p);
+  const first = order()[0];
+  if (first) {   // first strip: its black CA(i-1) peak leads off to the (unseen) previous residue
+    const p = peakXY(first, STRIPS[first].ca_im1, br), x0 = p.x - p.w * 0.49;
+    end(first, "im1", p);
+    s += circle(p) + `<line x1="${x0}" x2="${p.x - p.w * 0.27}" y1="${p.y}" y2="${p.y}"
+                        stroke="${getVar("--ok")}" stroke-width="2.5" stroke-linecap="round" marker-start="url(#back)"/>`;
+  }
+  const last = order()[N_SLOTS - 1];
+  if (complete && last) {   // last strip: its red CA(i) peak leads off to the (unseen) next residue
+    const q = peakXY(last, STRIPS[last].ca_im1, br), p = peakXY(last, STRIPS[last].ca_i, br);
+    end(last, "im1", q); end(last, "i", p);
+    s += circle(q) + circle(p) + `<line x1="${p.x + p.w * 0.27}" x2="${p.x + p.w * 0.51}" y1="${p.y}" y2="${p.y}"
+                        stroke="${getVar("--ok")}" stroke-width="2.5" stroke-linecap="round" marker-start="url(#back)"/>`;
+  }
+  for (const k of links) {
+    if (!k) continue;
+    const a = peakXY(k.left, k.ca_i, br), b = peakXY(k.right, k.ca_im1, br);
+    if (k.match) a.y = b.y = (a.y + b.y) / 2;   // matched peaks share one shift: keep the link level
+    s += circle(a) + circle(b);
+    if (k.match) {
+      end(k.left, "i", a); end(k.right, "im1", b);
+      s += `<line x1="${a.x + a.w * 0.27}" x2="${b.x - b.w * 0.27}" y1="${a.y}" y2="${b.y}"
+                  stroke="${getVar("--ok")}" stroke-width="2.5" stroke-linecap="round" marker-start="url(#back)"/>`;
+    } else {
+      // no partner either way: each peak's dashed search line ends in a dot coloured like the peak
+      const bad = getVar("--bad"), xa = b.x, xb = a.x;
+      const dash = (x1, x2, y) => `<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}"
+                  stroke="${bad}" stroke-width="2" stroke-dasharray="5 4"/>`;
+      const dot = (x, y, fill) => `<circle cx="${x}" cy="${y}" r="4.5" fill="${fill}" stroke="#fff" stroke-width="1.2"/>`;
+      s += dash(a.x + a.w * 0.27, xa, a.y) + dot(xa, a.y, "#ed1c24")     // red CA(i) looking right
+         + dash(b.x - b.w * 0.27, xb, b.y) + dot(xb, b.y, "#1d1d1f");    // black CA(i-1) looking left
+    }
+  }
+  for (const e of Object.values(ends)) {   // walk down the strip: black peak to red peak
+    if (!e.i || !e.im1) continue;
+    const dir = Math.sign(e.i.y - e.im1.y), y1 = e.im1.y + dir * ry, y2 = e.i.y - dir * ry;
+    if (dir && (y2 - y1) * dir > 0)
+      s += `<line x1="${e.im1.x}" x2="${e.im1.x}" y1="${y1}" y2="${y2}"
+                  stroke="${ok}" stroke-width="2.5" stroke-linecap="round"/>`;
+  }
+  svg.innerHTML = s;
+}
+const getVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+/* ---------- game state via Python ---------- */
+function setStatus(text, cls = "") {
+  $("status").textContent = text;
+  $("status").className = cls;
+}
+
+function refresh() {
+  if (!py) return;
+  const r = JSON.parse(py.globals.get("check")(JSON.stringify(order())));
+  drawLinks(r.links, r.solved);
+  blocked = r.bad > 0;
+  const next = blocked ? null : nextSlot();
+  [...$("slots").children].forEach(s => s.classList.toggle("next", s === next));
+  if (r.solved) {
+    solved = true;
+    document.querySelectorAll(".slot .card").forEach(c => c.classList.add("locked"));
+    $("hint").disabled = true;
+    setStatus("All six strips are connected!", "ok");
+  } else if (r.bad) {
+    setStatus("These strips don't connect: the red peak has no black partner and the black peak no red partner. " +
+              "Drag the last strip back to the right before adding another.", "bad");
+  } else {
+    const placed = order().filter(Boolean).length;
+    setStatus(`${placed} of ${N_SLOTS} strips placed — drag a strip from the right into the next empty slot.`);
+  }
+}
+
+$("hint").addEventListener("click", () => {
+  if (hintUsed || !py) return;
+  hintUsed = true;
+  $("hint").disabled = true;
+  [...$("slots").children].slice(1).forEach(s => s.querySelector(".card") && $("pool").append(s.querySelector(".card")));
+  placeLocked(py.globals.get("hint")(), 1);
+  refresh();
+});
+$("reset").addEventListener("click", () => py && newGame());
+window.addEventListener("resize", () => py && refresh());
+
+async function main() {
+  py = await loadPyodide();
+  py.runPython($("game-py").textContent);
+  STRIPS = JSON.parse(py.globals.get("strip_info")());
+  drawAxis();
+  newGame();
+}
+main().catch(err => setStatus("Could not load Python (Pyodide): " + err.message, "bad"));
+</script>
+</body>
+</html>
