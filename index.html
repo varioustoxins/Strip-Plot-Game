@@ -11,7 +11,7 @@
     --plot-h: 499px;          /* 84 * 2400 / 404 : keeps the PNG aspect ratio */
     --head-h: 22px;
     --row-h: 26px;
-    --axis-w: 56px;
+    --chain-h: 120px; --axis-w: 56px;
     --ink: #1d1d1f;
     --muted: #6b6b70;
     --line: #1d1d1f;
@@ -34,14 +34,30 @@
   .rule + .note { margin-top: -12px; }
 
   .board-scroll { overflow-x: auto; padding: 11.5px 0 6px; }   /* matches pool padding + border so tops line up */
-  .board { position: relative; display: flex; width: max-content; }
+  .board { position: relative; display: flex; width: max-content; padding-bottom: var(--chain-h); padding-right: 30px; }
+  /* backbone chain under the strips: a newly matched shared CA snaps together */
+  #links .snap { transform-box: fill-box; transform-origin: center; animation: snap .45s cubic-bezier(.3,1.6,.5,1); }
+  @keyframes snap { 0% { transform: translateX(12px) scale(1.25); opacity: .6; } 100% { transform: none; opacity: 1; } }
+  #links .ring { transform-box: fill-box; transform-origin: center; animation: ring .6s ease-out forwards; }
+  @keyframes ring { 0% { transform: scale(.8); opacity: .9; } 100% { transform: scale(2.2); opacity: 0; } }
   .axis { width: var(--axis-w); flex: none; position: relative; margin-top: 1.5px; }  /* matches .slots top border */
   .axis svg { position: absolute; top: var(--head-h); right: 0; overflow: visible; }
   .axis .rowlabel {
     position: absolute; right: 8px; height: var(--row-h); line-height: var(--row-h);
     font-size: 14px;
   }
-  .slots { display: flex; border: 1.5px solid var(--line); border-right: 0; }
+  .axis .rowlabel.res { font-size: 12px; right: 6px; }
+  .slots { display: flex; border: 1.5px solid var(--line); border-right: 0; position: relative; }
+  .slots.nope::after {   /* refused drop */
+    content: ""; position: absolute; inset: 0; z-index: 5; pointer-events: none;
+    background: rgba(198, 40, 40, .28); outline: 3px solid var(--bad);
+    animation: nope .7s ease-out forwards;
+  }
+  .side #status.warned { display: flex; gap: 7px; align-items: flex-start; }
+  #status .warn { flex: none; margin-top: -2px; }
+  #status.flash { animation: flash .9s ease-in-out; border-radius: 4px; }
+  @keyframes flash { 0%, 40%, 80% { background: rgba(198, 40, 40, .18); color: var(--bad); } 20%, 60%, 100% { background: transparent; } }
+  @keyframes nope { 0%, 30% { opacity: 1; } 100% { opacity: 0; } }
   .slot {
     width: calc(var(--plot-w) + 1.5px); flex: none; position: relative;
     border-right: 1.5px solid var(--line);
@@ -58,10 +74,9 @@
 
   .layout { display: grid; grid-template-columns: max-content max-content; gap: 28px; align-items: start; }
   .play { min-width: 0; }
-  .play .bar { width: 0; min-width: 100%; }   /* bar never widens the board column */
-  .bar #status { flex: 1 1 0; }
   @media (max-width: 960px) { .layout { grid-template-columns: minmax(0, 1fr); } }
   .pool-label { margin: 0 0 8px; font-weight: 600; }
+  .board-label { margin-left: var(--axis-w); }   /* line up with the strip box, not the axis */
   .pool {
     display: flex; flex-wrap: wrap; gap: 14px; align-content: flex-start;
     min-height: calc(var(--head-h) + var(--plot-h) + 3 * var(--row-h) + 20px);
@@ -102,7 +117,11 @@
     box-shadow: 0 12px 30px rgba(0,0,0,.25); transform: rotate(1.5deg);
   }
 
-  .bar { display: flex; gap: 10px; align-items: center; margin-top: 18px; flex-wrap: wrap; }
+  .top { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; margin-bottom: 18px; }
+  .top .rule { margin-bottom: 4px; }
+  .top .rule + .note { margin-top: 0; margin-bottom: 0; }
+  .controls { display: flex; gap: 10px; flex: none; }
+  .side #status { display: block; margin-top: 14px; width: 0; min-width: 100%; }   /* never widens the column */
   button {
     font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 8px;
     border: 1.5px solid var(--ink); background: #fff; color: var(--ink); cursor: pointer;
@@ -118,14 +137,22 @@
 <body>
 <main>
   <h1>HNCA/HNcoCA strip game</h1>
+  <header class="top">
+  <div class="intro">
   <p class="rule">Connect the <b>black</b> <i>i</i>&#8209;1 peak on the right to the <b class="red">red</b> <i>i</i> peak on the left.
     <span class="key"><span class="red">●</span>&thinsp;←&thinsp;<span class="blk">●</span></span></p>
   <p class="rule note">In each strip the black HNcoCA <i>i</i>&#8209;1 peak overlaps the HNCA <i>i</i>&#8209;1 peak;
     the red peak on its own is the HNCA <i>i</i> peak.</p>
+  </div>
+  <div class="controls">
+    <button id="hint">Hint</button>
+    <button id="reset">Start again</button>
+  </div>
+  </header>
 
   <div class="layout">
     <div class="play">
-      <div class="pool-label">Assembled strips</div>
+      <div class="pool-label board-label">Assembled strips</div>
       <div class="board-scroll">
         <div class="board" id="board">
           <div class="axis" id="axis"></div>
@@ -133,15 +160,11 @@
           <svg id="links"></svg>
         </div>
       </div>
-      <div class="bar">
-        <button id="hint">Hint</button>
-        <button id="reset">Start again</button>
-        <span id="status">Loading Python…</span>
-      </div>
     </div>
     <div class="side">
       <div class="pool-label">Strips to place</div>
       <div class="pool" id="pool"></div>
+      <span id="status">Loading Python…</span>
     </div>
   </div>
 </main>
@@ -215,6 +238,7 @@ function drawAxis() {
   $("axis").innerHTML = s +
     `<div style="position:absolute;left:-2px;top:${head + h / 2}px;transform:rotate(-90deg) translateX(-50%);transform-origin:left top;font-size:13px;white-space:nowrap">
        <sup>13</sup>C<sub>α</sub> (ppm)</div>` +
+    `<div class="rowlabel res" style="top:${top}px">residue</div>` +
     `<div class="rowlabel" style="top:${top + row}px"><sup>1</sup>H</div>` +
     `<div class="rowlabel" style="top:${top + 2 * row}px"><sup>15</sup>N</div>`;
 }
@@ -321,7 +345,7 @@ function moveDrag(e) {
   }
 }
 
-function endDrag() {
+function endDrag(e) {
   window.removeEventListener("pointermove", moveDrag);
   window.removeEventListener("pointerup", endDrag);
   window.removeEventListener("pointercancel", endDrag);
@@ -330,10 +354,24 @@ function endDrag() {
   card.classList.remove("lifted");
   target?.classList.remove("target");
   drag = null;
-  if (!target || target === card.parentElement) return;
+  if (!target) {   // let go over the assembled strips where a strip can't go: flash them red
+    const over = document.elementFromPoint(e.clientX, e.clientY)?.closest(".slots");
+    if (over && document.elementFromPoint(e.clientX, e.clientY).closest(".slot") !== card.parentElement) flashNope();
+    return;
+  }
+  if (target === card.parentElement) return;
 
   target.append(card);
   refresh();
+}
+
+function flashNope() {
+  for (const [id, cls] of [["slots", "nope"], ["status", "flash"]]) {
+    const el = $(id);
+    el.classList.remove(cls);
+    void el.offsetWidth;   // restart the animation if it is already running
+    el.classList.add(cls);
+  }
 }
 
 /* ---------- connectors ---------- */
@@ -385,7 +423,7 @@ function drawLinks(links, complete) {
       const bad = getVar("--bad"), xa = b.x, xb = a.x;
       const dash = (x1, x2, y) => `<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}"
                   stroke="${bad}" stroke-width="2" stroke-dasharray="5 4"/>`;
-      const dot = (x, y, fill) => `<circle cx="${x}" cy="${y}" r="4.5" fill="${fill}" stroke="#fff" stroke-width="1.2"/>`;
+      const dot = (x, y, fill) => `<circle cx="${x}" cy="${y}" r="9" fill="${fill}" stroke="#fff" stroke-width="1.6"/>`;
       s += dash(a.x + a.w * 0.27, xa, a.y) + dot(xa, a.y, "#ed1c24")     // red CA(i) looking right
          + dash(b.x - b.w * 0.27, xb, b.y) + dot(xb, b.y, "#1d1d1f");    // black CA(i-1) looking left
     }
@@ -397,13 +435,100 @@ function drawLinks(links, complete) {
       s += `<line x1="${e.im1.x}" x2="${e.im1.x}" y1="${y1}" y2="${y2}"
                   stroke="${ok}" stroke-width="2.5" stroke-linecap="round"/>`;
   }
+  s += drawChain(links, complete, br);
   svg.innerHTML = s;
+}
+
+/* Backbone under the assembled strips. Each strip is one HNCA "view" of the amide N(i)-H:
+   CA(i-1) - C'(i-1)(=O) - N(i)(-H) - CA(i), drawn as a 120-degree zigzag whose CA atoms sit on
+   the strip edges, so neighbouring strips share a CA: the left strip's red CA(i) is the right
+   strip's black CA(i-1). When the shifts match the two click together into one atom. */
+let snapped = new Set();   // matched pairs already shown, so only new ones animate
+function drawChain(links, complete, br) {
+  const ids = order(), slots = [...$("slots").children];
+  const sr = $("slots").getBoundingClientRect();
+  const yMid = sr.bottom - br.top + cssPx("--chain-h") / 2;
+  const ink = "#1d1d1f", red = "#ed1c24", nBlue = "#2c5aa0";
+  const bond = (x1, y1, x2, y2, extra = "") =>
+    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${ink}" stroke-width="1.6" stroke-linecap="round" ${extra}/>`;
+  const label = (x, y, t, fill = ink) =>
+    `<circle cx="${x}" cy="${y}" r="7.5" fill="#fff"/>
+     <text x="${x}" y="${y + 4.5}" text-anchor="middle" font-size="13" font-weight="600" fill="${fill}">${t}</text>`;
+  const ca = (x, y, fill, cls = "") =>
+    `<g class="${cls}"><circle cx="${x}" cy="${y}" r="9" fill="${fill}" stroke="#fff" stroke-width="1.2"/>
+     <text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff">Cα</text></g>`;
+  const merged = (x, y, fresh, ok = true) =>   // one atom seen from both strips: red half (HNCA i) + black half (HNcoCA i-1)
+    `${fresh ? `<circle class="ring" cx="${x}" cy="${y}" r="10" fill="none" stroke="${getVar("--ok")}" stroke-width="2.5"/>` : ""}
+     <g class="${fresh ? "snap" : ""}">
+       <path d="M${x},${y - 10} A10,10 0 0 0 ${x},${y + 10} Z" fill="${red}"/>
+       <path d="M${x},${y - 10} A10,10 0 0 1 ${x},${y + 10} Z" fill="${ink}"/>
+       <circle cx="${x}" cy="${y}" r="10" fill="none" stroke="${getVar(ok ? "--ok" : "--bad")}" stroke-width="2"
+               ${ok ? "" : `stroke-dasharray="3 2.5"`}/>
+       <text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff">Cα</text></g>`;
+
+  let bonds = "", atoms = "";
+  const now = new Set();
+  ids.forEach((id, k) => {
+    if (!id) return;
+    const r = slots[k].getBoundingClientRect();
+    const xL = r.left - br.left - 0.75, xR = r.right - br.left - 0.75, dx = (xR - xL) / 3;
+    const dy = dx * Math.tan(Math.PI / 6), up = k % 2 ? 1 : -1;    // zigzag flips each residue
+    const y = j => yMid + (j % 2 ? up : -up) * dy / 2;             // atoms 0..3: CA(i-1), C', N, CA(i)
+    const X = j => xL + j * dx;
+    const bl = Math.hypot(dx, dy);
+    const leftLink = k > 0 ? links[k - 1] : null, rightLink = links[k] ?? null;
+    // CAs sit on the strip edges. Matched neighbours share one atom; a mismatch splits it into
+    // two atoms side by side on the edge, red CA(i) left and black CA(i-1) right, with a warning sign.
+    const SPLIT = 9, split = l => !!l && !l.match;
+    const xa = X(0) + (split(leftLink) ? SPLIT : 0), xb = X(3) - (split(rightLink) ? SPLIT : 0);
+    const ya = y(0), yb = y(3);
+    bonds += bond(xa, ya, X(1), y(1)) + bond(X(1), y(1), X(2), y(2)) + bond(X(2), y(2), xb, yb);
+    // C'=O (double bond, outwards) and N-H (outwards, trans to the O)
+    const oy = y(1) + up * bl * 0.8, hy = y(2) - up * bl * 0.7;
+    bonds += bond(X(1) - 2.2, y(1), X(1) - 2.2, oy) + bond(X(1) + 2.2, y(1), X(1) + 2.2, oy) + bond(X(2), y(2), X(2), hy);
+    atoms += label(X(1), y(1), "C") + label(X(1), oy, "O") + label(X(2), y(2), "N", nBlue) + label(X(2), hy, "H");
+    if (k === 0)   // previous residue not shown: dangling bond
+      bonds += bond(xa, y(0), xa - dx * 0.8, y(0) + up * dy * 0.8, `stroke-dasharray="3 3" opacity=".6"`);
+    if (!leftLink || split(leftLink)) atoms += ca(xa, ya, ink);
+    if (rightLink?.match) {   // one shared CA, half red (HNCA i) and half black (HNcoCA i-1)
+      const key = `${id}>${rightLink.right}`;
+      now.add(key);
+      atoms += merged(xb, yb, !snapped.has(key));
+    } else if (rightLink) {   // shifts don't match: separate atoms plus a warning sign, away from the bonds
+      atoms += ca(xb, yb, red) + `<g transform="translate(${X(3) - 12} ${y(3) + up * 27 - 12})">${warnSign()}</g>`;
+    } else {
+      atoms += ca(xb, y(3), red);
+      if (k === N_SLOTS - 1 && complete)   // next residue not shown
+        bonds += bond(xb, y(3), xb + dx * 0.8, y(3) - up * dy * 0.8, `stroke-dasharray="3 3" opacity=".6"`);
+    }
+  });
+  snapped = now;
+  return bonds + atoms;
+}
+/* Warning sign (rounded triangle with "!") in a 28x28 box from -2,-2: used in the chain and the status message */
+function warnSign() {
+  const bad = getVar("--bad"), P = [[12, -0.2], [24.6, 22.2], [-0.6, 22.2]], r = 3.5;
+  let d = "";
+  P.forEach((p, i) => {   // cut each corner back by r along both edges and round it with a curve
+    const a = P[(i + 2) % 3], b = P[(i + 1) % 3];
+    const toward = (q) => { const l = Math.hypot(q[0] - p[0], q[1] - p[1]); return [p[0] + (q[0] - p[0]) * r / l, p[1] + (q[1] - p[1]) * r / l]; };
+    const s = toward(a), e = toward(b);
+    d += `${i ? "L" : "M"}${s[0].toFixed(2)},${s[1].toFixed(2)} Q${p[0]},${p[1]} ${e[0].toFixed(2)},${e[1].toFixed(2)} `;
+  });
+  return `<path d="${d}Z" fill="#fff" stroke="${bad}" stroke-width="2.4" stroke-linejoin="round"/>
+          <rect x="10.8" y="8.5" width="2.4" height="7" rx="1.2" fill="${bad}"/>
+          <circle cx="12" cy="18" r="1.4" fill="${bad}"/>`;
 }
 const getVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 /* ---------- game state via Python ---------- */
-function setStatus(text, cls = "") {
+function setStatus(text, cls = "", warn = false) {
   $("status").textContent = text;
+  if (warn) {   // icon in its own column so the wrapped lines hang-indent past it
+    $("status").innerHTML = `<svg class="warn" width="22" height="22" viewBox="-2 -2 28 28" aria-hidden="true">${warnSign()}</svg><span></span>`;
+    $("status").lastChild.textContent = text;
+    cls += " warned";
+  }
   $("status").className = cls;
 }
 
@@ -424,7 +549,7 @@ function refresh() {
     setStatus("All six strips are connected!", "ok");
   } else if (r.bad) {
     setStatus("These strips don't connect: the red peak has no black partner and the black peak no red partner. " +
-              "Drag the last strip back to the right before adding another.", "bad");
+              "Drag the last strip back to the right before adding another.", "bad", true);
   } else {
     const placed = order().filter(Boolean).length;
     setStatus(`${placed} of ${N_SLOTS} strips placed — drag a strip from the right into the next empty slot.`);
