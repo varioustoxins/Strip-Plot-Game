@@ -232,6 +232,12 @@ const N_SLOTS = 6;
 
 const $ = id => document.getElementById(id);
 let py = null, STRIPS = null, hintUsed = false, solved = false;
+let LABELS = {};   // strip id -> its "@n" peak label, n drawn at random from 1-150 for each game
+
+function drawLabels() {   // distinct random numbers, so the labels give nothing away about the order
+  const pool = shuffle(Array.from({ length: 150 }, (_, i) => i + 1));
+  LABELS = Object.fromEntries(Object.keys(STRIPS).map((id, i) => [id, pool[i]]));
+}
 
 /* ---------- size tokens: one scale factor S sizes the puzzle's boxes ----------
    Every structural size is derived from S and written to :root as resolved px, so layout,
@@ -316,7 +322,7 @@ function makeCard(id) {
   el.innerHTML = `
     <div class="head" style="background:${COLOURS[id]}"></div>
     <img src="assets/${id}.png?v=${ASSET_VERSION}" alt="HNCA strip" draggable="false">
-    <div class="row res">???</div>
+    <div class="row res">@${LABELS[id]}</div>
     <div class="row">${s.hn.toFixed(3)}</div>
     <div class="row n">${s.n.toFixed(2)}</div>`;
   el.addEventListener("pointerdown", startDrag);
@@ -336,6 +342,7 @@ function newGame() {
   $("hint").disabled = hintUsed;
   $("slots").innerHTML = "";
   $("pool").innerHTML = "";
+  drawLabels();
   for (let i = 0; i < N_SLOTS; i++) {
     const slot = document.createElement("div");
     slot.className = "slot";
