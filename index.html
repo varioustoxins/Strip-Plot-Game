@@ -7,11 +7,16 @@
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
 <style>
   :root {
+    /* Size tokens for the puzzle pane. These are the scale-1 values; fitPuzzle() rewrites them
+       as resolved px for the current scale (see "size tokens" in the script). Line widths
+       (1.5px borders) are deliberately NOT tokens so box alignment is the same at every scale. */
     --plot-w: 84px;
-    --plot-h: 499px;          /* 84 * 2400 / 404 : keeps the PNG aspect ratio */
+    --plot-h: 499px;          /* plot-w * 2400 / 404 : keeps the PNG aspect ratio */
     --head-h: 22px;
     --row-h: 26px;
     --chain-h: 120px; --axis-w: 56px;
+    --pool-gap: 14px; --pad-r: 30px;
+    --cell-font: 14px; --small-font: 12px;
     --ink: #1d1d1f;
     --muted: #6b6b70;
     --line: #1d1d1f;
@@ -22,19 +27,23 @@
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 24px 16px 48px;
+    margin: 0; padding: 24px 16px 16px;
     font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    /* Text size for titles, instructions, buttons and messages: 15px on normal screens, easing down
+       to 12.5px on small or short windows (15px at 1280 wide / 860 tall, 13px at 900 wide / 640 tall).
+       Everything else in the text is sized in em, so this one rule scales it all. */
+    font-size: clamp(12.5px, min(calc(8.26px + 0.526vw), calc(7.18px + 0.909vh)), 15px);
     color: var(--ink); background: var(--bg);
   }
   main { max-width: 1160px; margin: 0 auto; }
-  h1 { font-size: 22px; margin: 0 0 4px; }
+  h1 { font-size: 1.47em; margin: 0 0 .27em; }
   .rule { margin: 0 0 18px; color: var(--muted); }
   .rule b { color: var(--ink); }
   .rule .red { color: #a3171f; }
   .rule + .note { margin-top: -12px; }
 
-  .board-scroll { overflow-x: auto; padding: 11.5px 0 6px; }   /* matches pool padding + border so tops line up */
-  .board { position: relative; display: flex; width: max-content; padding-bottom: var(--chain-h); padding-right: 30px; }
+  .board-scroll { padding: 11.5px 0 6px; }   /* matches pool padding + border so tops line up */
+  .board { position: relative; display: flex; width: max-content; padding-bottom: var(--chain-h); padding-right: var(--pad-r); }
   /* backbone chain under the strips: a newly matched shared CA snaps together */
   #links .snap { transform-box: fill-box; transform-origin: center; animation: snap .45s cubic-bezier(.3,1.6,.5,1); }
   @keyframes snap { 0% { transform: translateX(12px) scale(1.25); opacity: .6; } 100% { transform: none; opacity: 1; } }
@@ -44,9 +53,9 @@
   .axis svg { position: absolute; top: var(--head-h); right: 0; overflow: visible; }
   .axis .rowlabel {
     position: absolute; right: 8px; height: var(--row-h); line-height: var(--row-h);
-    font-size: 14px;
+    font-size: var(--cell-font);
   }
-  .axis .rowlabel.res { font-size: 12px; right: 6px; }
+  .axis .rowlabel.res { font-size: var(--small-font); right: 6px; }
   .slots { display: flex; border: 1.5px solid var(--line); border-right: 0; position: relative; }
   .slots.nope::after {   /* refused drop */
     content: ""; position: absolute; inset: 0; z-index: 5; pointer-events: none;
@@ -72,16 +81,17 @@
   .slot.target:empty::before { background: #fff3e3; outline: 0; }   /* hovering a valid drop site */
   #links { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
 
-  .layout { display: grid; grid-template-columns: max-content max-content; gap: 28px; align-items: start; }
+  .layout { display: grid; grid-template-columns: max-content max-content; gap: 28px; align-items: start;
+            width: max-content; }   /* shrink-wrapped, so its size is the pane's natural size */
   .play { min-width: 0; }
-  @media (max-width: 960px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .stacked .layout { grid-template-columns: minmax(0, 1fr); }   /* chosen by fitPuzzle() when side by side won't fit */
   .pool-label { margin: 0 0 8px; font-weight: 600; }
   .board-label { margin-left: var(--axis-w); }   /* line up with the strip box, not the axis */
   .pool {
-    display: flex; flex-wrap: wrap; gap: 14px; align-content: flex-start;
+    display: flex; flex-wrap: wrap; gap: var(--pool-gap); align-content: flex-start;
     min-height: calc(var(--head-h) + var(--plot-h) + 3 * var(--row-h) + 20px);
     /* exactly five cards wide (the most it ever holds): 5 cards + 4 gaps + padding + border */
-    width: calc(5 * (var(--plot-w) + 3px) + 4 * 14px + 20px + 3px); max-width: 100%;
+    width: calc(5 * (var(--plot-w) + 3px) + 4 * var(--pool-gap) + 20px + 3px); max-width: 100%;
     padding: 10px; border: 1.5px dashed #b9b9bd; border-radius: 10px; background: #fff;
   }
   .pool.target { border-color: #e8a24a; background: #fff3e3; }
@@ -108,7 +118,7 @@
   .card img { display: block; width: var(--plot-w); height: var(--plot-h); pointer-events: none; }
   .card .row {
     height: var(--row-h); line-height: var(--row-h); text-align: center;
-    border-top: 1.5px solid var(--line); font-size: 14px; font-variant-numeric: tabular-nums;
+    border-top: 1.5px solid var(--line); font-size: var(--cell-font); font-variant-numeric: tabular-nums;
   }
   .card .res { background: var(--cell); font-weight: 600; }
   .card .n { background: var(--cell); }
@@ -117,13 +127,15 @@
     box-shadow: 0 12px 30px rgba(0,0,0,.25); transform: rotate(1.5deg);
   }
 
-  .top { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; margin-bottom: 18px; }
+  .top { display: flex; align-items: center; gap: 1.6em; margin-bottom: 1.2em; }
+  .top .intro { flex: 0 1 auto; min-width: 0; }   /* the text wraps; the buttons always stay beside it */
   .top .rule { margin-bottom: 4px; }
   .top .rule + .note { margin-top: 0; margin-bottom: 0; }
-  .controls { display: flex; gap: 10px; flex: none; }
-  .side #status { display: block; margin-top: 14px; width: 0; min-width: 100%; }   /* never widens the column */
+  .controls { display: flex; gap: .67em; flex: none; }
+  .side #status { display: block; margin-top: 14px; width: 0; min-width: 100%;   /* never widens the column */
+                  min-height: calc(4 * 1.45em); }   /* room for the longest message, so the fitted pane never grows */
   button {
-    font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 8px;
+    font: inherit; font-weight: 600; padding: .53em 1.07em; border-radius: .53em;
     border: 1.5px solid var(--ink); background: #fff; color: var(--ink); cursor: pointer;
   }
   button:disabled { opacity: .4; cursor: default; }
@@ -221,22 +233,75 @@ const N_SLOTS = 6;
 const $ = id => document.getElementById(id);
 let py = null, STRIPS = null, hintUsed = false, solved = false;
 
+/* ---------- size tokens: one scale factor S sizes the puzzle's boxes ----------
+   Every structural size is derived from S and written to :root as resolved px, so layout,
+   getBoundingClientRect(), elementFromPoint() and the SVG overlays share one coordinate system
+   (no zoom/transform). Drawing code reads sizes via cssPx() and scales its own marks by S. */
+const BASE = { "head-h": 22, "row-h": 26, "chain-h": 120, "axis-w": 56, "pool-gap": 14, "pad-r": 30,
+               "cell-font": 14, "small-font": 12 };
+const PLOT_W = 84, PLOT_ASPECT = 2400 / 404;   // strip PNG aspect ratio
+const S_MIN = 0.55, S_MIN_STACKED = 0.4;
+let S = 1;
+function applyScale(k) {
+  S = k;
+  const root = document.documentElement.style;
+  for (const [name, v] of Object.entries(BASE)) root.setProperty(`--${name}`, `${(v * k).toFixed(2)}px`);
+  const w = Math.round(PLOT_W * k);            // whole px so the 1.5px borders stay crisp
+  root.setProperty("--plot-w", `${w}px`);
+  root.setProperty("--plot-h", `${Math.round(w * PLOT_ASPECT)}px`);
+}
+
+/* Fit the puzzle pane into the space it is given: the width of <main> and the window height
+   below the pane's top. Text outside the pane doesn't scale, so pane size is affine in S;
+   measure it at two scales, solve for the S that fits, then nudge down if anything overflows.
+   If side by side would need S < S_MIN, stack the strips to place under the board and fit width only.
+   (Further panes can reuse this: give each its container and its own token root.) */
+function fitPuzzle() {
+  const pane = document.querySelector(".layout"), main = document.querySelector("main");
+  const availW = () => main.clientWidth;
+  const availH = () => innerHeight - (pane.getBoundingClientRect().top + scrollY) -
+                       parseFloat(getComputedStyle(document.body).paddingBottom);
+  const size = k => { applyScale(k); return [pane.offsetWidth, pane.offsetHeight]; };
+  const solve = (fitHeight) => {
+    const [w1, h1] = size(1), [w0, h0] = size(0.5);
+    const kFor = (avail, v1, v0) => {   // v(k) = a + b k  through (0.5, v0) and (1, v1)
+      const b = (v1 - v0) / 0.5;
+      return b > 0 ? (avail - (v1 - b)) / b : 1;
+    };
+    let k = Math.min(1, kFor(availW(), w1, w0));
+    if (fitHeight) k = Math.min(k, kFor(availH(), h1, h0));
+    return k;
+  };
+  const overflows = (fitHeight) => pane.offsetWidth > availW() + 0.5 || (fitHeight && pane.offsetHeight > availH() + 0.5);
+
+  document.body.classList.remove("stacked");
+  let k = solve(true), fitHeight = true, floor = S_MIN;
+  if (k < S_MIN) {
+    document.body.classList.add("stacked");
+    k = solve(false); fitHeight = false; floor = S_MIN_STACKED;
+  }
+  k = Math.max(floor, k);
+  applyScale(k);
+  for (let i = 0; i < 20 && k > floor && overflows(fitHeight); i++) applyScale(k = Math.max(floor, k - 0.01));
+}
+
 const cssPx = name => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
 const plotH = () => cssPx("--plot-h");
 const ppmToY = ppm => (ppm - PPM_TOP) / (PPM_BOTTOM - PPM_TOP) * plotH();
 
 function drawAxis() {
   const h = plotH(), head = cssPx("--head-h"), row = cssPx("--row-h");
-  let s = `<svg width="30" height="${h}" viewBox="0 0 30 ${h}">`;
+  const W = 30 * S, f = 13 * S;
+  let s = `<svg width="${W}" height="${h}" viewBox="0 0 ${W} ${h}">`;
   for (let p = 50; p <= 70; p++) {
     const y = ppmToY(p), major = p % 5 === 0;
-    s += `<line x1="${major ? 16 : 22}" x2="30" y1="${y}" y2="${y}" stroke="#1d1d1f" stroke-width="1.2"/>`;
-    if (major) s += `<text x="12" y="${y + 4.5}" text-anchor="end" font-size="13" fill="#1d1d1f">${p}</text>`;
+    s += `<line x1="${(major ? 16 : 22) * S}" x2="${W}" y1="${y}" y2="${y}" stroke="#1d1d1f" stroke-width="1.2"/>`;
+    if (major) s += `<text x="${12 * S}" y="${y + f * 0.35}" text-anchor="end" font-size="${f}" fill="#1d1d1f">${p}</text>`;
   }
   s += `</svg>`;
   const top = head + h;
   $("axis").innerHTML = s +
-    `<div style="position:absolute;left:-2px;top:${head + h / 2}px;transform:rotate(-90deg) translateX(-50%);transform-origin:left top;font-size:13px;white-space:nowrap">
+    `<div style="position:absolute;left:-2px;top:${head + h / 2}px;transform:rotate(-90deg) translateX(-50%);transform-origin:left top;font-size:${f}px;white-space:nowrap">
        <sup>13</sup>C<sub>α</sub> (ppm)</div>` +
     `<div class="rowlabel res" style="top:${top}px">residue</div>` +
     `<div class="rowlabel" style="top:${top + row}px"><sup>1</sup>H</div>` +
@@ -423,7 +488,7 @@ function drawLinks(links, complete) {
       const bad = getVar("--bad"), xa = b.x, xb = a.x;
       const dash = (x1, x2, y) => `<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}"
                   stroke="${bad}" stroke-width="2" stroke-dasharray="5 4"/>`;
-      const dot = (x, y, fill) => `<circle cx="${x}" cy="${y}" r="9" fill="${fill}" stroke="#fff" stroke-width="1.6"/>`;
+      const dot = (x, y, fill) => `<circle cx="${x}" cy="${y}" r="${9 * S}" fill="${fill}" stroke="#fff" stroke-width="1.6"/>`;
       s += dash(a.x + a.w * 0.27, xa, a.y) + dot(xa, a.y, "#ed1c24")     // red CA(i) looking right
          + dash(b.x - b.w * 0.27, xb, b.y) + dot(xb, b.y, "#1d1d1f");    // black CA(i-1) looking left
     }
@@ -452,19 +517,19 @@ function drawChain(links, complete, br) {
   const bond = (x1, y1, x2, y2, extra = "") =>
     `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${ink}" stroke-width="1.6" stroke-linecap="round" ${extra}/>`;
   const label = (x, y, t, fill = ink) =>
-    `<circle cx="${x}" cy="${y}" r="7.5" fill="#fff"/>
-     <text x="${x}" y="${y + 4.5}" text-anchor="middle" font-size="13" font-weight="600" fill="${fill}">${t}</text>`;
+    `<circle cx="${x}" cy="${y}" r="${7.5 * S}" fill="#fff"/>
+     <text x="${x}" y="${y + 4.5 * S}" text-anchor="middle" font-size="${13 * S}" font-weight="600" fill="${fill}">${t}</text>`;
   const ca = (x, y, fill, cls = "") =>
-    `<g class="${cls}"><circle cx="${x}" cy="${y}" r="9" fill="${fill}" stroke="#fff" stroke-width="1.2"/>
-     <text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff">Cα</text></g>`;
-  const merged = (x, y, fresh, ok = true) =>   // one atom seen from both strips: red half (HNCA i) + black half (HNcoCA i-1)
-    `${fresh ? `<circle class="ring" cx="${x}" cy="${y}" r="10" fill="none" stroke="${getVar("--ok")}" stroke-width="2.5"/>` : ""}
+    `<g class="${cls}"><circle cx="${x}" cy="${y}" r="${9 * S}" fill="${fill}" stroke="#fff" stroke-width="1.2"/>
+     <text x="${x}" y="${y + 3.5 * S}" text-anchor="middle" font-size="${9.5 * S}" font-weight="700" fill="#fff">Cα</text></g>`;
+  const R = 10 * S;
+  const merged = (x, y, fresh) =>   // one atom seen from both strips: red half (HNCA i) + black half (HNcoCA i-1)
+    `${fresh ? `<circle class="ring" cx="${x}" cy="${y}" r="${R}" fill="none" stroke="${getVar("--ok")}" stroke-width="2.5"/>` : ""}
      <g class="${fresh ? "snap" : ""}">
-       <path d="M${x},${y - 10} A10,10 0 0 0 ${x},${y + 10} Z" fill="${red}"/>
-       <path d="M${x},${y - 10} A10,10 0 0 1 ${x},${y + 10} Z" fill="${ink}"/>
-       <circle cx="${x}" cy="${y}" r="10" fill="none" stroke="${getVar(ok ? "--ok" : "--bad")}" stroke-width="2"
-               ${ok ? "" : `stroke-dasharray="3 2.5"`}/>
-       <text x="${x}" y="${y + 3.5}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff">Cα</text></g>`;
+       <path d="M${x},${y - R} A${R},${R} 0 0 0 ${x},${y + R} Z" fill="${red}"/>
+       <path d="M${x},${y - R} A${R},${R} 0 0 1 ${x},${y + R} Z" fill="${ink}"/>
+       <circle cx="${x}" cy="${y}" r="${R}" fill="none" stroke="${getVar("--ok")}" stroke-width="2"/>
+       <text x="${x}" y="${y + 3.5 * S}" text-anchor="middle" font-size="${9.5 * S}" font-weight="700" fill="#fff">Cα</text></g>`;
 
   let bonds = "", atoms = "";
   const now = new Set();
@@ -479,13 +544,14 @@ function drawChain(links, complete, br) {
     const leftLink = k > 0 ? links[k - 1] : null, rightLink = links[k] ?? null;
     // CAs sit on the strip edges. Matched neighbours share one atom; a mismatch splits it into
     // two atoms side by side on the edge, red CA(i) left and black CA(i-1) right, with a warning sign.
-    const SPLIT = 9, split = l => !!l && !l.match;
+    const SPLIT = 9 * S, split = l => !!l && !l.match;
     const xa = X(0) + (split(leftLink) ? SPLIT : 0), xb = X(3) - (split(rightLink) ? SPLIT : 0);
     const ya = y(0), yb = y(3);
     bonds += bond(xa, ya, X(1), y(1)) + bond(X(1), y(1), X(2), y(2)) + bond(X(2), y(2), xb, yb);
     // C'=O (double bond, outwards) and N-H (outwards, trans to the O)
     const oy = y(1) + up * bl * 0.8, hy = y(2) - up * bl * 0.7;
-    bonds += bond(X(1) - 2.2, y(1), X(1) - 2.2, oy) + bond(X(1) + 2.2, y(1), X(1) + 2.2, oy) + bond(X(2), y(2), X(2), hy);
+    const db = 2.2 * S;   // half-spacing of the C=O double bond
+    bonds += bond(X(1) - db, y(1), X(1) - db, oy) + bond(X(1) + db, y(1), X(1) + db, oy) + bond(X(2), y(2), X(2), hy);
     atoms += label(X(1), y(1), "C") + label(X(1), oy, "O") + label(X(2), y(2), "N", nBlue) + label(X(2), hy, "H");
     if (k === 0)   // previous residue not shown: dangling bond
       bonds += bond(xa, y(0), xa - dx * 0.8, y(0) + up * dy * 0.8, `stroke-dasharray="3 3" opacity=".6"`);
@@ -495,7 +561,8 @@ function drawChain(links, complete, br) {
       now.add(key);
       atoms += merged(xb, yb, !snapped.has(key));
     } else if (rightLink) {   // shifts don't match: separate atoms plus a warning sign, away from the bonds
-      atoms += ca(xb, yb, red) + `<g transform="translate(${X(3) - 12} ${y(3) + up * 27 - 12})">${warnSign()}</g>`;
+      atoms += ca(xb, yb, red) +
+        `<g transform="translate(${X(3) - 12 * S} ${y(3) + (up * 27 - 12) * S}) scale(${S})">${warnSign()}</g>`;
     } else {
       atoms += ca(xb, y(3), red);
       if (k === N_SLOTS - 1 && complete)   // next residue not shown
@@ -565,14 +632,24 @@ $("hint").addEventListener("click", () => {
   refresh();
 });
 $("reset").addEventListener("click", () => py && newGame());
-window.addEventListener("resize", () => py && refresh());
+let resizeQueued = false;
+window.addEventListener("resize", () => {
+  if (resizeQueued || !py) return;
+  resizeQueued = true;
+  requestAnimationFrame(() => { resizeQueued = false; relayout(); });
+});
+function relayout() {   // sizes changed: refit, then redraw everything that is drawn from sizes
+  fitPuzzle();
+  drawAxis();
+  refresh();
+}
 
 async function main() {
   py = await loadPyodide();
   py.runPython($("game-py").textContent);
   STRIPS = JSON.parse(py.globals.get("strip_info")());
-  drawAxis();
   newGame();
+  relayout();
 }
 main().catch(err => setStatus("Could not load Python (Pyodide): " + err.message, "bad"));
 </script>
