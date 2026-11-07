@@ -31,6 +31,7 @@
   .rule { margin: 0 0 18px; color: var(--muted); }
   .rule b { color: var(--ink); }
   .rule .red { color: #a3171f; }
+  .rule + .note { margin-top: -12px; }
 
   .board-scroll { overflow-x: auto; padding: 11.5px 0 6px; }   /* matches pool padding + border so tops line up */
   .board { position: relative; display: flex; width: max-content; }
@@ -81,6 +82,11 @@
     content: ""; position: absolute; left: 50%; top: var(--head-h); height: var(--plot-h);
     border-left: 1px dotted #a9a9ae; pointer-events: none; z-index: 0;
   }
+  /* guide: faint dotted line at the red CA(i) shift of the right-most assembled strip, behind the plots */
+  .guide .slot .card::before, .guide .pool .card::before {
+    content: ""; position: absolute; left: 0; right: 0; top: calc(var(--head-h) + var(--guide-y));
+    border-top: 1px dotted #a9a9ae; pointer-events: none; z-index: 0;
+  }
   .card img { position: relative; z-index: 1; mix-blend-mode: multiply; }   /* white plot background lets the centre line show through */
   .card.lifted { opacity: .25; }
   .card .head { height: var(--head-h); border-bottom: 1.5px solid var(--line); }
@@ -112,8 +118,10 @@
 <body>
 <main>
   <h1>HNCA/HNcoCA strip game</h1>
-  <p class="rule">Connect the <b>black</b> <i>i</i> peak on the right to the <b class="red">red</b> <i>i</i>&#8209;1 peak on the left.
+  <p class="rule">Connect the <b>black</b> <i>i</i>&#8209;1 peak on the right to the <b class="red">red</b> <i>i</i> peak on the left.
     <span class="key"><span class="red">●</span>&thinsp;←&thinsp;<span class="blk">●</span></span></p>
+  <p class="rule note">In each strip the black HNcoCA <i>i</i>&#8209;1 peak overlaps the HNCA <i>i</i>&#8209;1 peak;
+    the red peak on its own is the HNCA <i>i</i> peak.</p>
 
   <div class="layout">
     <div class="play">
@@ -141,16 +149,16 @@
 <script type="text/x-python" id="game-py">
 import json
 
-# 13C shifts of the assigned peaks, measured from the dotted circles in strip-game-1/2.pdf
+# 13C shifts of the assigned peaks, measured from the peak centres in assets/*.png (tools/measure_peaks.py)
 # ca_i   : red HNCA peak (this residue's CA)
 # ca_im1 : black HNcoCA peak (previous residue's CA)
 STRIPS = {
-    "red":     dict(hn=8.939, n=121.01, ca_i=58.84, ca_im1=60.68, residue="ASP", number=130),
-    "blue":    dict(hn=8.346, n=116.43, ca_i=57.13, ca_im1=58.86, residue="ASP", number=131),
-    "green":   dict(hn=7.526, n=120.96, ca_i=55.39, ca_im1=57.37, residue="ASN", number=132),
-    "orange":  dict(hn=8.963, n=122.49, ca_i=67.06, ca_im1=55.44, residue="ILE", number=133),
-    "crimson": dict(hn=7.793, n=117.06, ca_i=56.63, ca_im1=66.97, residue="ASN", number=134),
-    "cyan":    dict(hn=7.821, n=118.66, ca_i=65.63, ca_im1=56.62, residue="ILE", number=135),
+    "red":     dict(hn=8.939, n=121.01, ca_i=58.95, ca_im1=60.77, residue="ASP", number=130),
+    "blue":    dict(hn=8.346, n=116.43, ca_i=57.29, ca_im1=58.84, residue="ASP", number=131),
+    "green":   dict(hn=7.526, n=120.96, ca_i=55.37, ca_im1=57.34, residue="ASN", number=132),
+    "orange":  dict(hn=8.963, n=122.49, ca_i=66.98, ca_im1=55.42, residue="ILE", number=133),
+    "crimson": dict(hn=7.793, n=117.06, ca_i=56.60, ca_im1=66.89, residue="ASN", number=134),
+    "cyan":    dict(hn=7.821, n=118.66, ca_i=65.61, ca_im1=56.58, residue="ILE", number=135),
 }
 SOLUTION = ["red", "blue", "green", "orange", "crimson", "cyan"]
 TOLERANCE = 0.3  # ppm
@@ -235,8 +243,8 @@ function shuffle(a) {
 }
 
 function newGame() {
-  hintUsed = false; solved = false;
-  $("hint").disabled = false;
+  solved = false;   // hintUsed is NOT reset: one hint per visit, "Start again" doesn't give another
+  $("hint").disabled = hintUsed;
   $("slots").innerHTML = "";
   $("pool").innerHTML = "";
   for (let i = 0; i < N_SLOTS; i++) {
@@ -247,6 +255,7 @@ function newGame() {
   }
   placeLocked(START, 0);
   shuffle(Object.keys(STRIPS).filter(k => k !== START)).forEach(k => $("pool").append(makeCard(k)));
+  if (hintUsed) placeLocked(py.globals.get("hint")(), 1);   // the hint, once given, stays given
   refresh();
 }
 
@@ -403,6 +412,9 @@ function refresh() {
   const r = JSON.parse(py.globals.get("check")(JSON.stringify(order())));
   drawLinks(r.links, r.solved);
   blocked = r.bad > 0;
+  const last = order().filter(Boolean).pop();
+  document.body.classList.toggle("guide", !!last && !r.solved);
+  if (last) document.documentElement.style.setProperty("--guide-y", `${ppmToY(STRIPS[last].ca_i)}px`);
   const next = blocked ? null : nextSlot();
   [...$("slots").children].forEach(s => s.classList.toggle("next", s === next));
   if (r.solved) {

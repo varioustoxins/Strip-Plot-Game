@@ -32,17 +32,17 @@ The puzzle consists of 6 strips representing residues ASP130-ASP131-ASN132-ILE13
 - High resolution (300 DPI) for crisp display
 - Transparent background for flexible compositing
 
-**Strip data** (measured from the dotted circles with `tools/measure_strips.py`; lives in the Python block of `index.html`).
+**Strip data** (peak centres measured from the strip images with `tools/measure_peaks.py`; lives in the Python block of `index.html`).
 Red contours = HNCA, CA(i); black blobs = HNcoCA, CA(i-1). Strips link when left CA(i) ≈ right CA(i-1) within 0.3 ppm.
 
 | header  | residue | 1H    | 15N    | CA(i) red | CA(i-1) black |
 |---------|---------|-------|--------|-----------|---------------|
-| red     | ASP130  | 8.939 | 121.01 | 58.84     | 60.68         |
-| blue    | ASP131  | 8.346 | 116.43 | 57.13     | 58.86         |
-| green   | ASN132  | 7.526 | 120.96 | 55.39     | 57.37         |
-| orange  | ILE133  | 8.963 | 122.49 | 67.06     | 55.44         |
-| crimson | ASN134  | 7.793 | 117.06 | 56.63     | 66.97         |
-| cyan    | ILE135  | 7.821 | 118.66 | 65.63     | 56.62         |
+| red     | ASP130  | 8.939 | 121.01 | 58.95     | 60.77         |
+| blue    | ASP131  | 8.346 | 116.43 | 57.29     | 58.84         |
+| green   | ASN132  | 7.526 | 120.96 | 55.37     | 57.34         |
+| orange  | ILE133  | 8.963 | 122.49 | 66.98     | 55.42         |
+| crimson | ASN134  | 7.793 | 117.06 | 56.60     | 66.89         |
+| cyan    | ILE135  | 7.821 | 118.66 | 65.61     | 56.58         |
 
 **Correct sequence**: red, blue, green, orange, crimson, cyan
 
@@ -121,7 +121,8 @@ Strip-Plot-Game/
 │   └── cyan.png
 ├── tools/
 │   └── build_strips.py     (PDF -> clean strip PNGs)
-│   └── measure_strips.py   (peak positions, needs PyMuPDF)
+│   └── measure_strips.py   (PDF circle positions, needs PyMuPDF)
+│   └── measure_peaks.py    (peak centres from assets/*.png)
 └── README.md               (updated with game instructions)
 ```
 
