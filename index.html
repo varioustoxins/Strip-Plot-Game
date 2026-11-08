@@ -9,7 +9,7 @@
 <script>
   // HSQC data and hand-placed label positions (tools/label_editor.py), as scripts so the page also
   // works opened from disk; a timestamp stops the browser using a stale copy after a rebuild.
-  for (const f of ["k7_hsqc.js", "k7_ddx3_bound.js", "hsqc_shapes.js", "hsqc_labels.js", "oned.js", "k7_pept_peaks.js", "k7_csp_paper.js"])
+  for (const f of ["k7_hsqc.js", "k7_ddx3_bound.js", "hsqc_shapes.js", "hsqc_labels.js", "oned.js", "k7_pept_peaks.js", "k7_pept_guided.js", "k7_csp_paper.js"])
     document.write(`<script src="assets/${f}?t=${Date.now()}"><\/script>`);
 </script>
 <style>
@@ -2733,8 +2733,9 @@ const BIND_TEXT = {
     <div><p>Our six take their place among all of K7's residues; moves above the 0.5 ppm cutoff count as significant.</p>
     <p class="source">The &Delta; values and helices are read from the paper's figure, in this game's residue
     numbering (the paper's minus 4).</p></div>
-    <div><p>The close-ups show every significant move (black: K7 alone, red: with the peptide), each joined to its residue.
-    Because the peaks are assigned, every bar is a residue.</p></div>
+    <div><p>The close-ups show the clearest of the significant moves (black: K7 alone, red: with the peptide; orange
+    arrows: free to bound), each joined to its residue (sc: a tryptophan side chain; dotted circle: a free peak just below
+    the noise floor, placed from its BMRB shift). Because the peaks are assigned, every bar is a residue.</p></div>
     <div><p>Laid against K7's helices (as in the paper), the moves cluster on &alpha;1, the start of the chain and the
     &alpha;5&ndash;&alpha;6 region.</p></div>
     <div><p>On the structure they form one face, a shallow groove; the crystal structure solved later (3JRV) puts the
@@ -2784,15 +2785,20 @@ function drawBinding() {
   const t = Math.min(now, end), S = (a, b) => seg(t, a, b), ink = "#1d1d1f", hot = "#e8590c";   // each phase stops at its end
   const order = ["red", "blue", "green", "orange", "crimson", "cyan"].filter(id => STRIPS[id]);
   // the shift changes plotted are the paper's (its Fig. 6, digitised by tools/digitise_csp_figure.py, in the page's
-  // numbering); each close-up's crop and arrow come from the overlay (K7.peptide)
-  const PAPER = window.K7?.paperCSP, mapped = Object.fromEntries(PEP.peaks.filter(p => p.kind === "backbone").map(p => [p.seq, p]));
+  // numbering); each close-up's crop and arrow come from the overlay, its red peak chosen to match the paper's
+  // value (K7.guided, tools/guide_moves.py: a reconstruction; a tryptophan uses whichever N-H moves more)
+  const PAPER = window.K7?.paperCSP, GUIDED = window.K7?.guided?.moves ?? {};
+  const mapped = Object.fromEntries(PEP.peaks.filter(p => p.kind === "backbone").map(p => [p.seq, { ...p, ...(GUIDED[p.seq] ?? { lost: true }) }]));
   const seq = (SQ.data ??= JSON.parse(py.globals.get("seq_info")())).sequence;
   const bb = Object.entries(PAPER?.bars ?? {}).map(([k, v]) => ({ seq: +k, res: (seq[+k - 1] ?? "").toUpperCase(), csp: v.delta,
-                                                                   ...(mapped[+k] ? { h: mapped[+k].h, n: mapped[+k].n, free_h: mapped[+k].free_h, free_n: mapped[+k].free_n } : {}) }));
+                                                                   ...(mapped[+k] ? { h: mapped[+k].h, n: mapped[+k].n, free_h: mapped[+k].free_h, free_n: mapped[+k].free_n,
+                                                                        side: mapped[+k].kind === "side chain", lost: !!mapped[+k].lost,
+                                                                        unresolved: !!mapped[+k].unresolved,
+                                                                        fitted: mapped[+k].fitted } : {}) }));
   const thr = PAPER?.cutoff ?? 0.5, ours = Object.fromEntries(order.map(id => [STRIPS[id].number, id])), W_N_PAGE = PEP.csp_weight_n ?? 0.14;
   const nm = p => `${ONE[p.res] ?? "?"}${p.seq}`;
   let s = `<defs><marker id="bind-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto">
-      <path d="M0,0 L10,5 L0,10 z" fill="${ink}"/></marker></defs>`;
+      <path d="M0,0 L10,5 L0,10 z" fill="${hot}"/></marker></defs>`;
   // the order: our six first, on their own, at the plot's full scale (big bars, named, with their values and the
   // cutoff); they fly into their places in the CSP plot as their ornaments fade; they flash; then the plot's other
   // bars fan out from there, each significant one with its close-up
@@ -2803,7 +2809,7 @@ function drawBinding() {
   const HELICES = PAPER?.helices ?? [];   // as drawn in the paper's Fig. 6 (in the page's numbering)
   const MAGENTA = "#a0258f";
   // the CSP plot
-  const CX0 = 76, CX1 = 900, CY0 = 150, CY1 = 430, NMAX = 145, cmax = 2.5, CENTRE = 132.5;   // fills the page, with a margin
+  const CX0 = 76, CX1 = 900, CY0 = 205, CY1 = 555, NMAX = 145, cmax = 2.5, CENTRE = 132.5;   // fills the page, with a margin
   const cx = n => CX0 + (n - 0.5) / NMAX * (CX1 - CX0), cy = v => CY1 - Math.min(v, cmax) / cmax * (CY1 - CY0), bw = (CX1 - CX0) / NMAX * 0.8;
   const barAt = n => ours[n] ? T_FL : T_SPREAD + Math.abs(n - CENTRE) / (CENTRE - 1) * SPREAD;   // when each bar appears (furthest last)
   const ax = S(T_ROT0, T_ROT0 + 0.8);
@@ -2859,28 +2865,38 @@ function drawBinding() {
   const fl = (() => { const x = (t - T_FL) / 0.4; return x > 0 && x < 2 ? Math.abs(Math.sin(Math.PI * x)) : 0; })();
   if (fl > 0) s += `<rect x="${cx(129.5) - 3}" y="${CY0 - 4}" width="${cx(135.5) - cx(129.5) + 6}" height="${CY1 - CY0 + 8}" rx="4"
       fill="#d0021b" fill-opacity="${0.12 * fl}" stroke="#d0021b" stroke-width="${1.5 + 2 * fl}"/>`;
-  // close-ups of every significant move, in residue order, rows alternating: above the plot (joined down to the tops
-  // of their bars) and below it (joined up to the foot of theirs); each appears with its bar
-  const pick = bb.filter(p => p.csp >= thr && p.free_h != null).sort((a, b) => a.seq - b.seq), half = Math.ceil(pick.length / 2);
+  // close-ups of the clearest significant moves, in residue order, in one row above the plot (joined down to the tops
+  // of their bars); each appears with its bar
+  // only the clear ones: a red partner, and a move within 30% of the paper's value (a free peak just below the
+  // overlay's noise floor starts at its BMRB shift, marked with a dotted circle)
+  const clear = p => !p.lost && p.fitted != null && Math.abs(p.fitted - p.csp) <= 0.3 * p.csp;
+  const pick = bb.filter(p => p.csp >= thr && p.free_h != null && clear(p)).sort((a, b) => a.seq - b.seq), half = pick.length;   // one row, above the plot
   const PS = Math.min(64, (CX1 - CX0 - (half - 1) * 6) / half), PG = half > 1 ? (CX1 - CX0 - half * PS) / (half - 1) : 0;
   const gx = h => (11 - h) / 5 * 899, gy = n => (n - 100) / 33 * 659;
   pick.forEach((p, i) => {
-    const up = i % 2 === 0, j = Math.floor(i / 2), t0 = Math.max(barAt(p.seq), T_SPREAD), o = S(t0, t0 + 0.4) * (1 - hide);
+    const up = true, j = i, t0 = Math.max(barAt(p.seq), T_SPREAD), o = S(t0, t0 + 0.4) * (1 - hide);
     if (o <= 0) return;
     const x = CX0 + j * (PS + PG), y = up ? 44 : CY1 + 70, c = ours[p.seq] ? "#d0021b" : hot;
     // a square window, equal in weighted ppm (15N x 0.14), big enough for the move
     const r = Math.max(0.09, 0.75 * Math.max(Math.abs(p.h - p.free_h), W_N_PAGE * Math.abs(p.n - p.free_n)));
+    // no red peak in the overlay matches the paper's move (G65, I66): no arrow, just a ring on the free peak
+    const lost = p.lost;
     const mh = (p.free_h + p.h) / 2, mn = (p.free_n + p.n) / 2, rn = r / W_N_PAGE;
     const vb = [gx(mh + r), gy(mn - rn), gx(mh - r) - gx(mh + r), gy(mn + rn) - gy(mn - rn)];
     const ty = up ? y - 5 : y + PS + 12;
-    s += `<g opacity="${o}"><text x="${x + PS / 2}" y="${ty + (ours[p.seq] ? (up ? -4 : 5) : 0)}" text-anchor="middle" font-size="${ours[p.seq] ? 13 : 10}"
-        font-weight="700" fill="${c}">${nm(p)} <tspan font-weight="400" fill="${ink}">${p.csp.toFixed(2)}</tspan></text>
+    s += `<g opacity="${o}"><text x="${x + PS / 2}" y="${ty + (ours[p.seq] ? (up ? -4 : 5) : 0)}" text-anchor="middle" font-size="${ours[p.seq] ? 12 : half > 14 ? 8 : half > 12 ? 9 : 10}"
+        font-weight="700" fill="${c}">${nm(p)}${p.side ? `<tspan font-weight="400" font-size="8">sc</tspan>` : ""} <tspan font-weight="400" fill="${ink}">${p.csp.toFixed(2)}</tspan></text>
       <rect x="${x}" y="${y}" width="${PS}" height="${PS}" fill="#fff"/>
       <svg x="${x}" y="${y}" width="${PS}" height="${PS}" viewBox="${vb.join(" ")}" preserveAspectRatio="none">
         <image href="assets/k7_pept_black_fine.svg?v=${ASSET_VERSION}" width="899" height="659"/>
-        <image href="assets/k7_pept_red_fine.svg?v=${ASSET_VERSION}" width="899" height="659"/>
-        <line x1="${gx(p.free_h)}" y1="${gy(p.free_n)}" x2="${gx(p.h)}" y2="${gy(p.n)}" stroke="${ink}" stroke-width="1.4"
-          vector-effect="non-scaling-stroke" marker-end="url(#bind-arrow)"/></svg>
+        <image href="assets/k7_pept_red_fine.svg?v=${ASSET_VERSION}" width="899" height="659"/></svg>
+      ${(() => {   // the arrow (or ring) in the page's own units, so it is the same size in every close-up
+        const X = h => x + (gx(h) - vb[0]) / vb[2] * PS, Y = n => y + (gy(n) - vb[1]) / vb[3] * PS;
+        return lost ? `<circle cx="${X(p.free_h)}" cy="${Y(p.free_n)}" r="7" fill="none" stroke="${hot}" stroke-width="1.6" stroke-dasharray="2 2"/>`
+          : `<line x1="${X(p.free_h)}" y1="${Y(p.free_n)}" x2="${X(p.h)}" y2="${Y(p.n)}" stroke="${hot}" stroke-width="1.6" marker-end="url(#bind-arrow)"/>` +
+            // its free peak is just below the overlay's noise floor (G109, L127): a dotted circle at its BMRB shift
+            (p.unresolved ? `<circle cx="${X(p.free_h)}" cy="${Y(p.free_n)}" r="4.5" fill="none" stroke="${ink}" stroke-width="1.3" stroke-dasharray="1.6 1.6"/>` : "");
+      })()}
       <rect x="${x}" y="${y}" width="${PS}" height="${PS}" fill="none" stroke="${c}" stroke-width="${ours[p.seq] ? 4 : 1.8}"/>
       ${ours[p.seq] ? `<rect x="${x - 5}" y="${y - 5}" width="${PS + 10}" height="${PS + 10}" rx="4" fill="none" stroke="${c}" stroke-width="1.5"
           stroke-dasharray="4 3"/>` : ""}`;
@@ -2912,10 +2928,10 @@ function drawBinding() {
   });
   // last: the plot shrinks to the foot of the page and the structures appear above it (the shift changes on K7's
   // structure, as in the paper, then the K7 + DDX3 peptide crystal structure solved later)
-  const shrink = S(9.6, 11), kk = lerp(1, 0.58, shrink);
+  const shrink = S(9.6, 11), kk = lerp(1, 0.52, shrink);
   if (shrink > 0) {
     const defsEnd = s.indexOf("</defs>") + 7;
-    s = s.slice(0, defsEnd) + `<g transform="translate(${470 - 470 * kk} ${600 - 480 * kk}) scale(${kk})">` + s.slice(defsEnd) + `</g>`;
+    s = s.slice(0, defsEnd) + `<g transform="translate(${470 - 470 * kk} ${612 - 612 * kk}) scale(${kk})">` + s.slice(defsEnd) + `</g>`;
     // each picture is square (1920 px); helix labels are placed in its own pixels (STRUCT_LABELS)
     const pic = (x, title, href, o, legend, colour, labels, pdb) => `<g opacity="${o}">
         <text x="${x + 165}" y="20" text-anchor="middle" font-size="14" font-weight="600">${title}</text>
