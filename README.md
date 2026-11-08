@@ -1,8 +1,6 @@
 # The Strip Plot Game
 
-https://github.com/user-attachments/assets/cb3b2106-4689-42ec-ae59-e34b62e9912e
-
-<a href="https://varioustoxins.github.io/Strip-Plot-Game/"><img src="assets/readme/strip-game-play.gif" width="900" alt="The strip game being played: each strip's black i-1 peak is joined to the red i peak of the strip before it, until all six strips are connected"></a>
+<a href="https://varioustoxins.github.io/Strip-Plot-Game/"><img src="assets/readme/strip-game-play.gif" width="1080" alt="Playing the strip game: a strip that doesn't connect is rejected, then the right one is dragged into place"></a>
 
 ## The online interactive version
 
