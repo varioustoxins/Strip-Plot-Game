@@ -224,6 +224,9 @@
     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
   }
   img { -webkit-user-drag: none; }
+  #seq * { -webkit-user-select: none; user-select: none; }
+  /* while a strip or a run of residues is being dragged, nothing on the page can be selected */
+  html.dragging, html.dragging * { -webkit-user-select: none !important; user-select: none !important; }
   .card, .ghost { touch-action: none; }
   /* a "Beta" ribbon across the top-right corner, on the first step only; it never takes clicks */
   .sash { position: fixed; top: 30px; right: -38px; z-index: 50; width: 170px; transform: rotate(45deg);
@@ -340,7 +343,7 @@
           <b>chemical shift prediction</b>.</p>
         <p>Here four of the six types are known: two <b>Asp</b> and two <b>Ile</b>. The other two (<b>???</b>) could be
           anything.</p>
-        <p>Find where <b>Asp Asp ??? Ile ??? Ile</b> fits in K7's sequence: click the residue where the chain starts, or drag across the six residues.</p>
+        <p>Find where <b>Asp Asp ??? Ile ??? Ile</b> fits in K7's sequence: click the residue where the chain starts, or drag the six outlined residues along the sequence and let go.</p>
         <div class="seq-buttons"><button id="seq-hint">Hint</button><button id="seq-reset">Start again</button></div>
         <span id="seq-status"></span>
       </div>
@@ -605,6 +608,7 @@ function makeCard(id) {
     <div class="row">${s.hn.toFixed(3)}</div>
     <div class="row n">${s.n.toFixed(2)}</div>`;
   el.addEventListener("pointerdown", startDrag);
+  stopTouch(el);
   return el;
 }
 
@@ -650,6 +654,13 @@ function order() {
 
 /* ---------- dragging (pointer events: mouse + touch) ---------- */
 let drag = null;
+// during a drag: no text selection anywhere (iPad Safari otherwise starts one as the finger moves)
+function noSelect(on) {
+  document.documentElement.classList.toggle("dragging", on);
+  if (on) getSelection()?.removeAllRanges();
+}
+// iPad Safari: cancel a touch's default action (selection, callout, scrolling) where it starts a drag
+const stopTouch = el => el.addEventListener("touchstart", e => { if (e.cancelable) e.preventDefault(); }, { passive: false });
 
 function startDrag(e) {
   const card = e.currentTarget;
@@ -663,6 +674,7 @@ function startDrag(e) {
   ghost.style.top = r.top + "px";
   $("pane-strips").append(ghost);   // inside the pane so it gets the pane's size tokens
   card.classList.add("lifted");
+  noSelect(true);
   drag = { card, ghost, dx: e.clientX - r.left, dy: e.clientY - r.top, target: null };
   window.addEventListener("pointermove", moveDrag);
   window.addEventListener("pointerup", endDrag);
@@ -700,6 +712,7 @@ function moveDrag(e) {
 }
 
 function endDrag(e) {
+  noSelect(false);
   window.removeEventListener("pointermove", moveDrag);
   window.removeEventListener("pointerup", endDrag);
   window.removeEventListener("pointercancel", endDrag);
@@ -2558,10 +2571,11 @@ function drawSequence() {
       }
     });
   }
-  if (SQ.drag) for (let pos = Math.min(SQ.drag.from, SQ.drag.to); pos <= Math.max(SQ.drag.from, SQ.drag.to); pos++)
-    s += outline(pos, "#2c5aa0", 2.5);                                    // the run being dragged over
-  else if (SQ.hover && !SQ.solved) for (let j = 0; j < 6; j++) {    // live: green where the type fits, red where not
-    const pos = SQ.hover + j, aa = D.sequence[pos - 1]?.toUpperCase(), want = D.types[j];
+  // live, while hovering or dragging: the six residues the chain would take, starting under the pointer (a drag
+  // slides them along the sequence), green where the type fits, red where not
+  const run = SQ.drag ? SQ.drag.to : SQ.solved ? null : SQ.hover;
+  if (run) for (let j = 0; j < 6; j++) {
+    const pos = run + j, aa = D.sequence[pos - 1]?.toUpperCase(), want = D.types[j];
     s += outline(pos, aa && (!want || want === aa) ? "#1a8f3c" : "#c62828", 2.5);
   }
   if (fadeA > 0) s = s.slice(0, seqStart) + (fadeA < 1 ? `<g opacity="${1 - fadeA}">${s.slice(seqStart)}</g>` : "");
@@ -2664,6 +2678,7 @@ function tryStart(pos) {
   }
 }
 $("seq").addEventListener("pointerdown", e => {
+  noSelect(true);   // from the first press anywhere on the sequence, until the button or finger is lifted
   if (SQ.linked) {   // after the link: a click on any part of a strip flashes all its parts
     const g = document.elementFromPoint(e.clientX, e.clientY)?.closest("#seq [data-strip]");
     if (g) { SQ.focus = { i: +g.dataset.strip, at: performance.now() }; drawSequence(); }
@@ -2672,23 +2687,36 @@ $("seq").addEventListener("pointerdown", e => {
   const pos = posAt(e);
   if (pos === null || SQ.solved) return;
   e.preventDefault();
+  noSelect(true);
   $("seq").setPointerCapture(e.pointerId);
   SQ.drag = { from: pos, to: pos };
   drawSequence();
 });
 $("seq").addEventListener("pointermove", e => {
+  if (e.buttons) getSelection()?.removeAllRanges();   // belt and braces: drop any selection a browser starts mid-drag
   const pos = posAt(e);
   if (SQ.drag) { if (pos !== null && pos !== SQ.drag.to) { SQ.drag.to = pos; drawSequence(); } return; }
   if (pos !== SQ.hover) { SQ.hover = pos; drawSequence(); }
 });
 $("seq").addEventListener("pointerup", () => {
+  noSelect(false);
   if (!SQ.drag) return;
-  const start = Math.min(SQ.drag.from, SQ.drag.to);
+  const start = SQ.drag.to;   // where the slid run now starts
   SQ.drag = null;
   tryStart(start);
   drawSequence();
 });
-$("seq").addEventListener("pointercancel", () => { SQ.drag = null; drawSequence(); });
+$("seq").addEventListener("pointercancel", () => { noSelect(false); SQ.drag = null; drawSequence(); });
+// no browser may start a text selection from the sequence graphic (Firefox and Safari do on a press-and-drag,
+// even with user-select: none, when the press lands between cells or the drag runs onto the text beside it)
+for (const ev of ["mousedown", "selectstart", "dragstart"]) $("seq").addEventListener(ev, e => e.preventDefault());
+window.addEventListener("pointerup", () => { if (!drag) noSelect(false); });
+// iPad Safari: a touch on a residue (or anywhere while dragging) must not select text or scroll
+$("seq").addEventListener("touchstart", e => {
+  const t = e.touches[0];
+  if (e.cancelable && t && !SQ.solved && !SQ.linked && posAt(t) !== null) e.preventDefault();
+}, { passive: false });
+$("seq").addEventListener("touchmove", e => { if (SQ.drag && e.cancelable) e.preventDefault(); }, { passive: false });
 $("seq").addEventListener("pointerleave", () => { if (!SQ.drag) { SQ.hover = null; drawSequence(); } });
 $("seq-hint").addEventListener("click", () => {
   SQ.hint = true; $("seq-hint").disabled = true;
