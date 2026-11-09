@@ -928,13 +928,15 @@ const STRIP_OF = {};   // residue number -> strip colour id, for highlighting th
 
 const VIEW_TEXT = {
   unassigned: `<p>This is the <sup>1</sup>H-<sup>15</sup>N HSQC of the K7 protein from vaccinia virus.
-    Every peak is one N–H group: one for each residue's backbone amide (prolines have none),
+    Every peak is one N–H group: one for each residue's backbone amide (prolines and the N terminal residue have none),
     plus the side-chain N–H of each tryptophan.</p>
     <p>But which peak belongs to which residue? The spectrum alone doesn't say.</p>`,
-  picked: `<p>First the peaks are <b>picked</b> and given arbitrary labels: @1, @2, … Each one stands for an
-    as-yet unnamed residue, known as a pseudo-residue, a spin system, or in CCPN an NMR residue.</p>
-    <p>These are just names for peaks. They say nothing about where each one sits in the sequence.
-    The coloured peaks are the six strips you will put in order in step 3.</p>`,
+  picked: `<p>First the peaks are <b>picked</b> and given arbitrary labels: @1, @2, … Each one stands in for
+    a residue of the known sequence; we just don't know which yet. These are known as pseudo-residues,
+    spin systems, or in CCPN parlance as NMR residues.</p>
+    <p>Remember these are just names for sets of peaks associated with a residue. They say nothing about where each
+    one sits in the sequence, only that each set's peaks come from the same residue.
+    The coloured peaks are from the six strips you will put in order in step 3.</p>`,
   assigned: `<p><b>Assignment</b> links each peak to its residue, e.g. D130 is aspartate 130.</p>
     <p>The labels shown here are an <b>example</b>, shuffled at random, so they don't give away the
     answer: finding the real assignment of the coloured peaks is your job in step 3.</p>
