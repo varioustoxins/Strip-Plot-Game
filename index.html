@@ -680,8 +680,11 @@ function lastFilledSlot() {
 let blocked = false;   // a bad connection is on the board: no more strips until it is removed
 function dropTargetAt(x, y) {
   const el = document.elementFromPoint(x, y);
-  const slot = el?.closest(".slot");
-  if (slot) return blocked || slot.querySelector(".card") ? null : nextSlot();   // any empty slot drops into the next free one
+  if (el?.closest(".slots")) {   // anywhere over the assembled strips (a strip, an empty slot or a border between them)
+    const from = drag?.card.parentElement;
+    if (from?.classList.contains("slot")) return from;   // a placed strip let go over the board stays where it is
+    return blocked ? null : nextSlot();                   // a new strip goes into the next free slot, unless a bad one is on
+  }
   return el?.closest(".pool") ?? null;
 }
 
@@ -705,9 +708,8 @@ function endDrag(e) {
   card.classList.remove("lifted");
   target?.classList.remove("target");
   drag = null;
-  if (!target) {   // let go over the assembled strips where a strip can't go: flash them red
-    const over = document.elementFromPoint(e.clientX, e.clientY)?.closest(".slots");
-    if (over && document.elementFromPoint(e.clientX, e.clientY).closest(".slot") !== card.parentElement) flashNope();
+  if (!target) {   // let go over the assembled strips while a bad strip is on them: flash them red
+    if (document.elementFromPoint(e.clientX, e.clientY)?.closest(".slots")) flashNope();
     return;
   }
   if (target === card.parentElement) return;
