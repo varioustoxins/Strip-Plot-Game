@@ -218,6 +218,13 @@
   #hnca-text p { margin: 0 0 .7em; }
   .note-box { background: #eef3fb; border: 1px solid #a9bfe3; border-radius: 6px; padding: .5em .7em; font-size: .92em; }
   #hsqc .lbl { transition: opacity .3s; }
+  /* touch screens (iPad Safari): taps and drags on the controls, strips, sequence and spectra must not start a text
+     selection, the long-press callout or an image drag; Safari still needs the -webkit- forms */
+  button, .stepper, .views, .card, .pool, .slot, .slots, .ghost, #seq, .stage, .spectrum, svg, .seq-buttons, .player {
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
+  img { -webkit-user-drag: none; }
+  .card, .ghost { touch-action: none; }
   /* a "Beta" ribbon across the top-right corner, on the first step only; it never takes clicks */
   .sash { position: fixed; top: 30px; right: -38px; z-index: 50; width: 170px; transform: rotate(45deg);
           background: #d0021b; color: #fff; text-align: center; font-weight: 700; font-size: 13px; letter-spacing: .14em;
